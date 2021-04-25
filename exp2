@@ -1,0 +1,287 @@
+import logging
+import random
+import math
+from loderunnerclient.internals.actions import LoderunnerAction
+from loderunnerclient.internals.board import Board
+from loderunnerclient.game_client import GameClient
+from loderunnerclient.internals.element import Element
+
+logging.basicConfig(
+    format="%(asctime)s %(levelname)s:%(message)s", level=logging.INFO)
+
+i = 0
+max_lenght = 100
+result = []
+paths = {}
+path = ""
+x_coord = []
+y_coord = []
+
+
+def turn(gcb: Board):
+    if gcb.is_game_over():
+        return list(LoderunnerAction)[4]
+    Person = gcb.get_my_position()
+
+    # всякие суициды выполненные
+    action_id = random.randint(0, len(LoderunnerAction) - 4)
+
+    def sucideCheck():
+        def slide_arr(el):
+            if (len(x_coord) > 10):
+                x_coord.pop(0)
+                y_coord.pop(0)
+            x_coord.append(el._x)
+            y_coord.append(el._y)
+        slide_arr(gcb.get_my_position())
+
+        def check_stop():
+            if (max(x_coord) - min(x_coord) < 3 and len(x_coord) == 11) and (max(y_coord) - min(y_coord) < 3 and len(y_coord) == 11):
+                x_coord.clear()
+                y_coord.clear()
+                return True
+            return False
+
+        return check_stop()
+    # Глаза Пашка
+
+    def Save():  # 0 - нет опасности 1 - спасаться вправо 2 - спасаться влево
+        def LeftSave():
+            for i in range(Person._x, 0, -1):
+                if gcb.has_enemy_at(i, Person._y):
+                    return i
+                else:
+                    return 0
+
+        def RightSave():
+            for i in range(Person._x, gcb._size):
+                if gcb.has_enemy_at(i, Person._y):
+                    return i
+                else:
+                    return 0
+
+        def CheckSave():
+            if LeftSave():
+                if RightSave():
+                    if Person._x - LeftSave() < RightSave() - Person._x:
+                        return 1
+                    else:
+                        return 2
+            if RightSave():
+                return 2
+            else:
+                return 0
+        return CheckSave()
+
+    def SearchGold():  # 7 - спуститься 6 - копать влево 5 - слева внизу 4 - копать вправа 3 - справа внизу 2 - нету 1 -справа 0 - слева
+        def CheckLeftGold():
+            for i in range(Person._x, 0, -1):
+                if gcb.has_wall_at(i, Person._y):
+                    return False
+                if gcb.has_enemy_at(i, Person._y):
+                    return False
+                if gcb.has_other_hero_at(i, Person._y):
+                    return False
+                if gcb.get_at(i, Person._y+1)._name == "NONE":
+                    if gcb.has_gold_at(i, Person._y):
+                        return i
+                    else:
+                        return False
+                if gcb.get_at(i, Person._y)._name == "PIPE" or gcb.get_at(i, Person._y)._name == "NONE":
+                    continue
+                if gcb.has_gold_at(i, Person._y):
+                    return i
+
+        def CheckRightGold():
+            for i in range(Person._x, gcb._size):
+                if gcb.has_wall_at(i, Person._y):
+                    return False
+                if gcb.has_enemy_at(i, Person._y):
+                    return False
+                if gcb.has_other_hero_at(i, Person._y):
+                    return False
+                if gcb.get_at(i, Person._y+1)._name == "NONE":
+                    if gcb.has_gold_at(i, Person._y):
+                        return i
+                    else:
+                        return False
+                if gcb.get_at(i, Person._y)._name == "PIPE" or gcb.get_at(i, Person._y)._name == "NONE":
+                    continue
+                if gcb.has_gold_at(i, Person._y):
+                    return i
+
+        def CheckDownGold():
+            for i in range(Person._y+1, gcb._size):  # ПОД
+                if gcb.get_at(Person._x, i)._name == "UNDESTROYABLE_WALL":
+                    return False
+                if gcb.get_at(Person._x, i)._name == "BRICK":
+                    return False
+                if gcb.has_gold_at(Person._x, i):
+                    return 7
+                if gcb.has_pipe_at(Person._x, i):
+                    continue
+                if gcb.has_ladder_at(Person._x, i):
+                    continue
+
+            for i in range(Person._y+1, gcb._size):  # СЛЕВА
+                if gcb.has_gold_at(Person._x-1, i):
+                    return 5
+                if gcb.get_at(Person._x-1, i)._name == "UNDESTROYABLE_WALL":
+                    return False
+                if gcb.get_at(Person._x-1, i)._name == "BRICK" and (gcb.get_at(Person._x-1, i-1)._name == "BRICK" or gcb.get_at(Person._x-1, i-1)._name == "UNDESTROYABLE_WALL"):
+                    return False
+                if gcb.has_pipe_at(Person._x-1, i):
+                    continue
+                if gcb.has_ladder_at(Person._x-1, i):
+                    continue
+                if gcb.get_at(Person._x-1, i)._name == "NONE":
+                    continue
+
+            for i in range(Person._y+1, gcb._size):  # СПРАВА
+                if gcb.has_gold_at(Person._x+1, i):
+                    return 5
+                if gcb.get_at(Person._x+1, i)._name == "UNDESTROYABLE_WALL":
+                    return False
+                if gcb.get_at(Person._x+1, i)._name == "BRICK" and (gcb.get_at(Person._x-1, i-1)._name == "BRICK" or gcb.get_at(Person._x-1, i-1)._name == "UNDESTROYABLE_WALL"):
+                    return False
+                if gcb.has_pipe_at(Person._x+1, i):
+                    continue
+                if gcb.has_ladder_at(Person._x+1, i):
+                    continue
+                if gcb.get_at(Person._x+1, i)._name == "NONE":
+                    continue
+
+        def CheckGold():
+            if CheckLeftGold():
+                if CheckRightGold():
+                    if Person._x - CheckLeftGold() < CheckRightGold() - Person._x:
+                        return 0
+                    else:
+                        return 1
+                else:
+                    return 0
+            if CheckRightGold():
+                return 1
+            else:
+                if CheckDownGold():
+                    return CheckDownGold()
+                else:
+                    return 2
+        return CheckGold()
+
+    def SearchLadder():  # 7 - спуститься 6 - копать влево 5 - слева внизу 4 - копать вправа 3 - справа внизу 2 - нету 1 -справа 0 - слева
+        def CheckLeft():
+            for i in range(Person._x, 0, -1):
+                if gcb.has_wall_at(i, Person._y):
+                    return False
+                if gcb.has_enemy_at(i, Person._y):
+                    return False
+                if gcb.has_other_hero_at(i, Person._y):
+                    return False
+                if gcb.get_at(i, Person._y+1)._name == "NONE":
+                    return False
+                if gcb.get_at(i, Person._y+1)._name == "PIPE":
+                    return False
+                if gcb.get_at(i, Person._y)._name == "PIPE" or gcb.get_at(i, Person._y)._name == "NONE":
+                    continue
+                if gcb.has_ladder_at(i, Person._y):
+                    return i
+
+        def CheckRight():
+            for i in range(Person._x, gcb._size):
+                if gcb.has_wall_at(i, Person._y):
+                    return False
+                if gcb.has_enemy_at(i, Person._y):
+                    return False
+                if gcb.has_other_hero_at(i, Person._y):
+                    return False
+                if gcb.get_at(i, Person._y+1)._name == "NONE":
+                    return False
+                if gcb.get_at(i, Person._y+1)._name == "PIPE":
+                    return False
+                if gcb.get_at(i, Person._y)._name == "PIPE" or gcb.get_at(i, Person._y)._name == "NONE":
+                    continue
+                if gcb.has_ladder_at(i, Person._y):
+                    return i
+
+        def CheckLadder():
+            if gcb.has_ladder_at(Person._x, Person._y):
+                if gcb.has_wall_at(Person._x, Person._y-1):
+                    return 4
+                return 2
+            if CheckLeft():
+                if CheckRight():
+                    if CheckRight()-Person._x < Person._x-CheckLeft():
+                        return 1
+                    else:
+                        return 0
+                else:
+                    return 0
+            if CheckRight():
+                return 1
+            else:
+                return 3
+        return CheckLadder()
+
+    if Save():
+        if Save() == 1:
+            print("спасаться вправо")
+            return list(LoderunnerAction)[1]
+        if Save() == 2:
+            print("спасаться влево")
+            return list(LoderunnerAction)[0]
+    else:
+        if SearchGold() != 2:  # 7 - спуститься 6 - копать влево 5 - слева внизу 4 - копать вправа 3 - справа внизу 2 - нету 1 -справа 0 - слева
+            if SearchGold() == 0:
+                print('золото слева')
+                action_id = 0
+            if SearchGold() == 1:
+                print('золото справа')
+                action_id = 1
+            if SearchGold() == 3:
+                print('золото справа внизу')
+                action_id = 1
+            if SearchGold() == 4:
+                print('копать вправа')
+                action_id = 6
+            if SearchGold() == 5:
+                print('золото слева внизу')
+                action_id = 0
+            if SearchGold() == 6:
+                print('копать влево')
+                action_id = 7
+            if SearchGold() == 7:
+                print('золото слева внизу')
+        else:  # 4 слезаю 3 - нету лестниц 2 - лезть 1 - справа 0 - слева
+            if SearchLadder() == 4:
+                print('слезаю')
+                action_id = 4
+            if SearchLadder() == 3:
+                print('нету лестниц')
+            if SearchLadder() == 2:
+                action_id = 2
+                print('лезу наверх')
+            if SearchLadder() == 1:
+                action_id = 1
+                print('лестница справа')
+            if SearchLadder() == 0:
+                action_id = 0
+                print('лестница слева')
+            print(action_id)
+
+    # if sucideCheck():
+        # return list(LoderunnerAction)[5]
+
+    return list(LoderunnerAction)[action_id]
+
+
+def main():
+    gcb = GameClient(
+        # change this url to your
+        "https://dojorena.io/codenjoy-contest/board/player/dojorena397?code=2789686311734274059"
+    )
+    gcb.run(turn)
+
+
+if __name__ == "__main__":
+    main()

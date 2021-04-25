@@ -1,0 +1,183 @@
+import logging
+import random
+import math
+from loderunnerclient.internals.actions import LoderunnerAction
+from loderunnerclient.internals.board import Board
+from loderunnerclient.game_client import GameClient
+from loderunnerclient.internals.element import Element
+
+logging.basicConfig(
+    format="%(asctime)s %(levelname)s:%(message)s", level=logging.INFO)
+
+i = 0
+max_lenght = 100
+result = []
+paths = {}
+path = ""
+
+
+def turn(gcb: Board):
+    Person = gcb.get_my_position()
+    global i
+    global max_lenght
+    global path
+    result.clear()
+    paths.clear()
+    i = 0
+
+    if gcb.is_game_over():
+        return list(LoderunnerAction)[4]
+
+    def createPath(x, y, prevPath, index):
+        if max_lenght <= len(prevPath)-4 or len(prevPath) > 11:
+            return
+
+        def CreateNewPath(path, index):
+            global i
+            paths[i] = path
+            i += 1
+
+        def Up():
+            global max_lenght
+            global i
+            if prevPath[-1] == "v":
+                return
+            if gcb.has_gold_at(x, y-1) and gcb.has_ladder_at(x, y):
+                CreateNewPath(prevPath+"^GOLDA", i)
+                max_lenght = len(prevPath)+1
+                return
+            if gcb.has_other_hero_at(x, y-1) or gcb.has_enemy_at(x, y-1) or gcb.has_wall_at(x, y-1):
+                CreateNewPath(prevPath+"Stop", i)
+            if gcb.has_ladder_at(x, y):
+                if gcb.has_ladder_at(x, y-1) or gcb.has_ladder_at(x, y):
+                    CreateNewPath(prevPath+"^", i)
+                    createPath(x, y-1, prevPath+"^", i)
+
+        def Down():
+            global max_lenght
+            global i
+            if prevPath[-1] == "^":
+                return
+            if gcb.has_gold_at(x, y+1):
+                CreateNewPath(prevPath+"vGOLDA", i)
+                max_lenght = len(prevPath)+1
+                return
+
+            if gcb.has_ladder_at(x, y+1) or gcb.get_at(x, y+1)._name == 'NONE' or gcb.has_pipe_at(x, y+1):
+                CreateNewPath(prevPath+"v", i)
+                createPath(x, y+1, prevPath+"v", i)
+            if gcb.has_other_hero_at(x, y+1) or gcb.has_enemy_at(x, y+1) or gcb.has_wall_at(x, y+1):
+                CreateNewPath(prevPath+"Stop", i)
+
+        def Right():
+            global i
+            global max_lenght
+            if prevPath[-1] == "<":
+                return
+            if gcb.has_gold_at(x+1, y):
+                CreateNewPath(prevPath+">GOLDA", i)
+                max_lenght = len(prevPath)+1
+                return
+            if gcb.has_other_hero_at(x+1, y) or gcb.has_enemy_at(x+1, y) or gcb.has_wall_at(x+1, y) or ((gcb.get_at(x+1, y+1)._name == 'NONE' or gcb.get_at(x+1, y+1)._name == 'PIPE') and gcb.get_at(x+1, y)._name == 'NONE'):
+                CreateNewPath(prevPath+">STOP", i)
+            if gcb.get_at(x+1, y+1)._name == 'BRICK':
+                if gcb.has_gold_at(x+1, y+2):
+                    CreateNewPath(prevPath+"rr>vvGOLDA", i)
+            else:
+                CreateNewPath(prevPath+">", i)
+                createPath(x+1, y, prevPath+">", i)
+
+        def Left():
+            global i
+            global max_lenght
+            if prevPath[-1] == ">":
+                return
+            if gcb.has_gold_at(x-1, y):
+                CreateNewPath(prevPath+"<GOLDA", i)
+                max_lenght = len(prevPath)+1
+                return
+            if gcb.has_other_hero_at(x-1, y) or gcb.has_enemy_at(x-1, y) or gcb.has_wall_at(x-1, y) or ((gcb.get_at(x-1, y+1)._name == 'NONE' or gcb.get_at(x-1, y+1)._name == 'PIPE') and gcb.get_at(x-1, y)._name == 'NONE'):
+                CreateNewPath(prevPath+"<STOP", i)
+            else:
+                CreateNewPath(prevPath+"<", i)
+                createPath(x-1, y, prevPath+"<", i)
+        Right()
+        Left()
+        Up()
+        Down()
+
+    def filter():
+        for key in paths:
+            if paths[key][-5:] == 'GOLDA':
+                result.append(paths[key][5:][:-5])
+            if len(result) > 0:
+                return min(result)
+
+    def CheckLet(x, y):
+        global path
+        if len(path) == 0:
+            return
+        if path[0] == ">" and (gcb.has_other_hero_at(x+1, y) or gcb.has_enemy_at(x+1, y) or gcb.has_wall_at(x+1, y) or ((gcb.get_at(x+1, y+1)._name == 'NONE' or gcb.get_at(x+1, y+1)._name == 'PIPE') and gcb.get_at(x+1, y)._name == 'NONE')):
+            path = ""
+            return
+            x += 1
+        if path[0] == "<" and (gcb.has_other_hero_at(x-1, y) or gcb.has_enemy_at(x-1, y) or gcb.has_wall_at(x-1, y) or ((gcb.get_at(x-1, y+1)._name == 'NONE' or gcb.get_at(x-1, y+1)._name == 'PIPE') and gcb.get_at(x-1, y)._name == 'NONE')):
+            path = ""
+            return
+            x -= 1
+        if path[0] == "^" and (gcb.has_other_hero_at(x, y-1) or gcb.has_enemy_at(x, y-1) or gcb.has_wall_at(x, y-1) or (gcb.get_at(x, y-1)._name == 'NONE' and gcb.get_at(x, y)._name == 'NONE')):
+            path = ""
+            return
+            y += 1
+        if path[0] == "v" and (gcb.has_other_hero_at(x, y+1) or gcb.has_enemy_at(x, y+1) or gcb.has_wall_at(x, y+1)):
+            path = ""
+            return
+        else:
+            return
+
+    CheckLet(Person._x, Person._y)
+    if len(path) == 0:
+        max_lenght = 100
+        createPath(Person._x, Person._y, "start", i)
+        path = "p"+filter()
+        if len(result) == 0:
+            print(path)
+
+    def Moving():
+        global path
+        if path[0] == "<":
+            a = path[0]
+            path = path[1:]
+            return 0
+        if path[0] == ">":
+            path = path[1:]
+            return 1
+        if path[0] == "^":
+            path = path[1:]
+            return 2
+        if path[0] == "v":
+            path = path[1:]
+            return 3
+        if path[0] == "r":
+            path = path[1:]
+            return 6
+        if path[0] == "p":
+            path = path[1:]
+            return 4
+
+    action_id = 4
+
+    action_id = Moving()
+    prev_mov = action_id
+    print(paths)
+    return list(LoderunnerAction)[action_id]
+
+
+def main():
+    gcb = GameClient(
+        "https://dojorena.io/codenjoy-contest/board/player/dojorena397?code=2789686311734274059")
+    gcb.run(turn)
+
+
+if __name__ == "__main__":
+    main()
